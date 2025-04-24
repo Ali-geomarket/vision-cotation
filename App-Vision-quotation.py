@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 
 # --- Configuration initiale ---
-st.set_page_config(page_title="Vision Quotation", layout="centered")
+st.set_page_config(page_title="Vision Cotation", layout="centered")
 
 # --- Données utilisateurs pour connexion ---
 USERS = {"sg": "dri", "ps": "dri"}
@@ -31,15 +31,15 @@ if not st.session_state["authenticated"]:
 
 # --- PAGE : Accueil ---
 if st.session_state["main_page"] == "home":
-    st.title("Bienvenue - Vision quotation")
+    st.title("Bienvenue - Vision cotation")
     st.write("Que souhaitez-vous faire ?")
-    if st.button("Récupérer le TCD MA"):
-        st.session_state["main_page"] = "tcd_ma"
+    if st.button("Récupérer le MA regroupé"):
+        st.session_state["main_page"] = "ma_regroupe"
         st.rerun()
 
-# --- PAGE : TCD MA ---
-elif st.session_state["main_page"] == "tcd_ma":
-    st.title("Analyse TCD - Marché Adressable")
+# --- PAGE : MA regroupé ---
+elif st.session_state["main_page"] == "ma_regroupe":
+    st.title("Marché Adressable regroupé")
 
     if st.button("Retour"):
         st.session_state["main_page"] = "home"
@@ -64,9 +64,9 @@ elif st.session_state["main_page"] == "tcd_ma":
 
             df["TRANCHE_REGROUPÉE"] = df["NB_SALARIE_FIN"].apply(regrouper_tranches)
 
-            if st.button("Récupérer le TCD"):
+            if st.button("Afficher le MA regroupé"):
                 df["SIRET_BOA"] = df["SIRET_BOA"].astype(str)
-                pivot = pd.pivot_table(
+                regroupement = pd.pivot_table(
                     df[df["TRANCHE_REGROUPÉE"].notnull()],
                     index="TRANCHE_REGROUPÉE",
                     values="SIRET_BOA",
@@ -76,30 +76,30 @@ elif st.session_state["main_page"] == "tcd_ma":
                 ).rename(columns={"SIRET_BOA": "NOMBRE ENTREPRISES"})
 
                 ordered_index = ["1 A 5 SALARIES", "6 A 49 SALARIES", "49 ET PLUS SALARIES", "Total général"]
-                pivot = pivot.reindex(ordered_index)
-                st.session_state["pivot_result"] = pivot
+                regroupement = regroupement.reindex(ordered_index)
+                st.session_state["ma_regroupe_result"] = regroupement
                 st.rerun()
 
         except Exception as e:
             st.error(f"Erreur lors de la lecture du fichier : {e}")
 
-    # Affichage du TCD
-    if st.session_state.get("pivot_result") is not None:
-        st.subheader("Tableau Croisé Dynamique – Marché Adressable")
-        st.dataframe(st.session_state["pivot_result"])
+    # Affichage des résultats
+    if st.session_state.get("ma_regroupe_result") is not None:
+        st.subheader("Résultat – Marché Adressable regroupé")
+        st.dataframe(st.session_state["ma_regroupe_result"])
 
-        if st.button("Enregistrer l'image du TCD"):
+        if st.button("Enregistrer l'image du MA regroupé"):
             fig, ax = plt.subplots(figsize=(10, 3))
             ax.axis('off')
-            table_data = [[idx] + list(row) for idx, row in st.session_state["pivot_result"].iterrows()]
-            col_labels = ["TRANCHE"] + st.session_state["pivot_result"].columns.to_list()
+            table_data = [[idx] + list(row) for idx, row in st.session_state["ma_regroupe_result"].iterrows()]
+            col_labels = ["TRANCHE"] + st.session_state["ma_regroupe_result"].columns.to_list()
             table = ax.table(cellText=table_data, colLabels=col_labels, loc='center')
             table.scale(1, 2)
             buf = BytesIO()
             plt.savefig(buf, format="png", bbox_inches="tight", dpi=300)
             buf.seek(0)
-            st.download_button("Télécharger l'image du TCD", data=buf, file_name="TCD_MA.png", mime="image/png")
+            st.download_button("Télécharger l'image du MA regroupé", data=buf, file_name="MA_regroupe.png", mime="image/png")
 
         if st.button("Renouveler l'opération"):
-            del st.session_state["pivot_result"]
+            del st.session_state["ma_regroupe_result"]
             st.rerun()
