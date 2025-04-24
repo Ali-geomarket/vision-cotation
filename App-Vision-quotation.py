@@ -45,37 +45,43 @@ elif st.session_state["main_page"] == "tcd_ma":
         st.session_state["main_page"] = "home"
         st.rerun()
 
-    uploaded_file = st.file_uploader("Déposez un fichier Excel", type=["xlsx"])
+    uploaded_file = st.file_uploader("Déposez un fichier CSV", type=["csv"])
 
     if uploaded_file:
-        df = pd.read_excel(uploaded_file)
+        try:
+            df = pd.read_csv(uploaded_file, sep=';', dtype=str)
 
-        # Nettoyage + regroupement des tranches
-        def regrouper_tranches(val):
-            if isinstance(val, str):
-                if any(val.startswith(code) for code in ["02", "03"]):
-                    return "1 A 5 SALARIES"
-                elif any(val.startswith(code) for code in ["04", "05", "06"]):
-                    return "6 A 49 SALARIES"
-                elif val.startswith(("07", "08", "09", "10", "11", "12", "13", "14", "15")):
-                    return "49 ET PLUS SALARIES"
-            return None  # ignore les autres cas
+            # Nettoyage + regroupement des tranches
+            def regrouper_tranches(val):
+                if isinstance(val, str):
+                    if any(val.startswith(code) for code in ["02", "03"]):
+                        return "1 A 5 SALARIES"
+                    elif any(val.startswith(code) for code in ["04", "05", "06"]):
+                        return "6 A 49 SALARIES"
+                    elif val.startswith(("07", "08", "09", "10", "11", "12", "13", "14", "15")):
+                        return "49 ET PLUS SALARIES"
+                return None  # ignore les autres cas
 
-        df["TRANCHE_REGROUPÉE"] = df["NB_SALARIE_FIN"].apply(regrouper_tranches)
+            df["TRANCHE_REGROUPÉE"] = df["NB_SALARIE_FIN"].apply(regrouper_tranches)
 
-        if st.button("Récupérer le TCD"):
-            pivot = pd.pivot_table(
-                df[df["TRANCHE_REGROUPÉE"].notnull()],
-                index="TRANCHE_REGROUPÉE",
-                values="SIRET_BOA",
-                aggfunc="count",
-                margins=True,
-                margins_name="Total général"
-            ).rename(columns={"SIRET_BOA": "NOMBRE ENTREPRISES"})
+            if st.button("Récupérer le TCD"):
+                df["SIRET_BOA"] = df["SIRET_BOA"].astype(str)
+                pivot = pd.pivot_table(
+                    df[df["TRANCHE_REGROUPÉE"].notnull()],
+                    index="TRANCHE_REGROUPÉE",
+                    values="SIRET_BOA",
+                    aggfunc="count",
+                    margins=True,
+                    margins_name="Total général"
+                ).rename(columns={"SIRET_BOA": "NOMBRE ENTREPRISES"})
 
-            pivot = pivot.loc[["1 A 5 SALARIES", "6 A 49 SALARIES", "49 ET PLUS SALARIES", "Total général"]]
-            st.session_state["pivot_result"] = pivot
-            st.rerun()
+                ordered_index = ["1 A 5 SALARIES", "6 A 49 SALARIES", "49 ET PLUS SALARIES", "Total général"]
+                pivot = pivot.reindex(ordered_index)
+                st.session_state["pivot_result"] = pivot
+                st.rerun()
+
+        except Exception as e:
+            st.error(f"Erreur lors de la lecture du fichier : {e}")
 
     # Affichage du TCD
     if st.session_state.get("pivot_result") is not None:
