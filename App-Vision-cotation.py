@@ -9,10 +9,13 @@ st.set_page_config(page_title="Vision Cotation", layout="centered")
 # --- Données utilisateurs pour connexion ---
 USERS = {"sg": "dri", "ps": "dri", "equipe.cotation": "Covage.2025&"}
 
+# --- Initialisation des états ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "main_page" not in st.session_state:
     st.session_state["main_page"] = "login"
+if "upload_key" not in st.session_state:
+    st.session_state["upload_key"] = "file_uploader_0"
 
 # --- PAGE : Connexion ---
 if not st.session_state["authenticated"]:
@@ -35,9 +38,8 @@ if st.session_state["main_page"] == "home":
     st.write("Que souhaitez-vous faire ?")
     if st.button("Récupérer le MA regroupé"):
         st.session_state["main_page"] = "ma_regroupe"
-        # Reset upload et résultat
-        st.session_state.pop("uploaded_file", None)
-        st.session_state.pop("ma_regroupe_result", None)
+        st.session_state["ma_regroupe_result"] = None
+        st.session_state["upload_key"] = "file_uploader_0"
         st.rerun()
 
 # --- PAGE : MA regroupé ---
@@ -48,7 +50,7 @@ elif st.session_state["main_page"] == "ma_regroupe":
         st.session_state["main_page"] = "home"
         st.rerun()
 
-    uploaded_file = st.file_uploader("Déposez un fichier CSV", type=["csv"], key="uploaded_file")
+    uploaded_file = st.file_uploader("Déposez un fichier CSV", type=["csv"], key=st.session_state["upload_key"])
 
     if uploaded_file:
         try:
@@ -89,7 +91,7 @@ elif st.session_state["main_page"] == "ma_regroupe":
         st.subheader("Résultat – Marché Adressable regroupé")
         st.dataframe(st.session_state["ma_regroupe_result"])
 
-        # Génère le fichier image à la volée pour un téléchargement direct
+        # Génération de l’image à télécharger
         buf = BytesIO()
         fig, ax = plt.subplots(figsize=(10, 3))
         ax.axis('off')
@@ -108,8 +110,8 @@ elif st.session_state["main_page"] == "ma_regroupe":
         )
 
         if st.button("Renouveler l'opération"):
-            # Supprime tout pour repartir de zéro
-            for key in ["ma_regroupe_result", "uploaded_file"]:
-                if key in st.session_state:
-                    del st.session_state[key]
+            st.session_state["ma_regroupe_result"] = None
+            # Incrémente la clé pour forcer le reset du file_uploader
+            current_key = int(st.session_state["upload_key"].split("_")[-1])
+            st.session_state["upload_key"] = f"file_uploader_{current_key + 1}"
             st.rerun()
