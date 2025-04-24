@@ -7,7 +7,7 @@ from io import BytesIO
 st.set_page_config(page_title="Vision Cotation", layout="centered")
 
 # --- Données utilisateurs pour connexion ---
-USERS = {"sg": "dri", "ps": "dri"}
+USERS = {"sg": "dri", "ps": "dri", "equipe.cotation": "Covage.2025&"}
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
