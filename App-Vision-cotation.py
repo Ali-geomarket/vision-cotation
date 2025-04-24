@@ -35,6 +35,9 @@ if st.session_state["main_page"] == "home":
     st.write("Que souhaitez-vous faire ?")
     if st.button("Récupérer le MA regroupé"):
         st.session_state["main_page"] = "ma_regroupe"
+        # Reset upload et résultat
+        st.session_state.pop("uploaded_file", None)
+        st.session_state.pop("ma_regroupe_result", None)
         st.rerun()
 
 # --- PAGE : MA regroupé ---
@@ -45,13 +48,12 @@ elif st.session_state["main_page"] == "ma_regroupe":
         st.session_state["main_page"] = "home"
         st.rerun()
 
-    uploaded_file = st.file_uploader("Déposez un fichier CSV", type=["csv"])
+    uploaded_file = st.file_uploader("Déposez un fichier CSV", type=["csv"], key="uploaded_file")
 
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file, sep=';', dtype=str)
 
-            # Nettoyage + regroupement des tranches
             def regrouper_tranches(val):
                 if isinstance(val, str):
                     if any(val.startswith(code) for code in ["02", "03"]):
@@ -60,7 +62,7 @@ elif st.session_state["main_page"] == "ma_regroupe":
                         return "6 A 49 SALARIES"
                     elif val.startswith(("07", "08", "09", "10", "11", "12", "13", "14", "15")):
                         return "49 ET PLUS SALARIES"
-                return None  # ignore les autres cas
+                return None
 
             df["TRANCHE_REGROUPÉE"] = df["NB_SALARIE_FIN"].apply(regrouper_tranches)
 
@@ -83,23 +85,31 @@ elif st.session_state["main_page"] == "ma_regroupe":
         except Exception as e:
             st.error(f"Erreur lors de la lecture du fichier : {e}")
 
-    # Affichage des résultats
     if st.session_state.get("ma_regroupe_result") is not None:
         st.subheader("Résultat – Marché Adressable regroupé")
         st.dataframe(st.session_state["ma_regroupe_result"])
 
-        if st.button("Enregistrer l'image du MA regroupé"):
-            fig, ax = plt.subplots(figsize=(10, 3))
-            ax.axis('off')
-            table_data = [[idx] + list(row) for idx, row in st.session_state["ma_regroupe_result"].iterrows()]
-            col_labels = ["TRANCHE"] + st.session_state["ma_regroupe_result"].columns.to_list()
-            table = ax.table(cellText=table_data, colLabels=col_labels, loc='center')
-            table.scale(1, 2)
-            buf = BytesIO()
-            plt.savefig(buf, format="png", bbox_inches="tight", dpi=300)
-            buf.seek(0)
-            st.download_button("Télécharger l'image du MA regroupé", data=buf, file_name="MA_regroupe.png", mime="image/png")
+        # Génère le fichier image à la volée pour un téléchargement direct
+        buf = BytesIO()
+        fig, ax = plt.subplots(figsize=(10, 3))
+        ax.axis('off')
+        table_data = [[idx] + list(row) for idx, row in st.session_state["ma_regroupe_result"].iterrows()]
+        col_labels = ["TRANCHE"] + st.session_state["ma_regroupe_result"].columns.to_list()
+        table = ax.table(cellText=table_data, colLabels=col_labels, loc='center')
+        table.scale(1, 2)
+        plt.savefig(buf, format="png", bbox_inches="tight", dpi=300)
+        buf.seek(0)
+
+        st.download_button(
+            label="Télécharger l'image du MA regroupé",
+            data=buf,
+            file_name="MA_regroupe.png",
+            mime="image/png"
+        )
 
         if st.button("Renouveler l'opération"):
-            del st.session_state["ma_regroupe_result"]
+            # Supprime tout pour repartir de zéro
+            for key in ["ma_regroupe_result", "uploaded_file"]:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.rerun()
