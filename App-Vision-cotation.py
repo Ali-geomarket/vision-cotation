@@ -2,6 +2,12 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from io import BytesIO
+import geopandas as gpd
+from shapely.geometry import Point
+from pathlib import Path
+import zipfile
+import tempfile
+import os
 
 # --- Configuration initiale ---
 st.set_page_config(page_title="Vision Cotation", layout="centered")
@@ -36,11 +42,21 @@ if not st.session_state["authenticated"]:
 if st.session_state["main_page"] == "home":
     st.title("Bienvenue - Vision cotation")
     st.write("Que souhaitez-vous faire ?")
-    if st.button("Récupérer le MA regroupé"):
-        st.session_state["main_page"] = "ma_regroupe"
-        st.session_state["ma_regroupe_result"] = None
-        st.session_state["upload_key"] = "file_uploader_0"
-        st.rerun()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Récupérer le MA regroupé"):
+            st.session_state["main_page"] = "ma_regroupe"
+            st.session_state["ma_regroupe_result"] = None
+            st.session_state["upload_key"] = "file_uploader_0"
+            st.rerun()
+
+    with col2:
+        if st.button("Transformer GeoJSON en KMZ"):
+            st.session_state["main_page"] = "geojson_to_kmz"
+            st.session_state["kmz_result"] = None
+            st.session_state["upload_key"] = "file_uploader_geojson_0"
+            st.rerun()
 
 # --- PAGE : MA regroupé ---
 elif st.session_state["main_page"] == "ma_regroupe":
@@ -91,7 +107,7 @@ elif st.session_state["main_page"] == "ma_regroupe":
         st.subheader("Résultat – Marché Adressable regroupé")
         st.dataframe(st.session_state["ma_regroupe_result"])
 
-        # Génération de l’image à télécharger
+        # Génération image
         buf = BytesIO()
         fig, ax = plt.subplots(figsize=(10, 3))
         ax.axis('off')
@@ -111,7 +127,91 @@ elif st.session_state["main_page"] == "ma_regroupe":
 
         if st.button("Renouveler l'opération"):
             st.session_state["ma_regroupe_result"] = None
-            # Incrémente la clé pour forcer le reset du file_uploader
             current_key = int(st.session_state["upload_key"].split("_")[-1])
             st.session_state["upload_key"] = f"file_uploader_{current_key + 1}"
+            st.rerun()
+
+# --- PAGE : Transformation GeoJSON ➜ KMZ ---
+elif st.session_state["main_page"] == "geojson_to_kmz":
+    st.title("Transformation GeoJSON ➜ KMZ")
+
+    if st.button("Retour"):
+        st.session_state["main_page"] = "home"
+        st.rerun()
+
+    uploaded_file = st.file_uploader("Déposez un fichier GeoJSON", type=["geojson"], key=st.session_state["upload_key"])
+
+    if uploaded_file:
+        st.success("Fichier chargé. Cliquez ci-dessous pour lancer la conversion.")
+
+        if st.button("Transformer le fichier en KMZ"):
+            try:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    temp_geojson = Path(tmpdir) / "input.geojson"
+                    temp_kml = Path(tmpdir) / "output.kml"
+                    temp_kmz = Path(tmpdir) / "output.kmz"
+
+                    with open(temp_geojson, "wb") as f:
+                        f.write(uploaded_file.read())
+
+                    gdf = gpd.read_file(temp_geojson)
+
+                    geom_type = gdf.geometry.geom_type.unique()
+                    if len(geom_type) > 1:
+                        st.error("Mélange de géométries détecté (Points et Lignes). Utilisez un fichier homogène.")
+                        st.stop()
+                    geom_type = geom_type[0]
+
+                    if geom_type == "Point":
+                        if "laty" in gdf.columns and "longx" in gdf.columns:
+                            gdf['geometry'] = gdf.apply(lambda row: Point(float(row['longx']), float(row['laty'])), axis=1)
+                            gdf.set_crs("EPSG:4326", inplace=True)
+                        else:
+                            gdf.set_crs("EPSG:2154", allow_override=True, inplace=True)
+                            gdf = gdf.to_crs("EPSG:4326")
+                        gdf["Name"] = gdf.get("siret_boa", "")
+                        gdf["Description"] = gdf.get("dénomination_de_l_unité_légale", "")
+
+                    elif geom_type == "LineString":
+                        gdf.set_crs("EPSG:2154", allow_override=True, inplace=True)
+                        gdf = gdf.to_crs("EPSG:4326")
+                        gdf["Name"] = gdf.get("id_cotation", "")
+                        gdf["Description"] = gdf.get("nom_lien", "")
+
+                    else:
+                        st.error(f"Géométrie non prise en charge : {geom_type}")
+                        st.stop()
+
+                    for col in gdf.columns:
+                        if col != "geometry":
+                            gdf[col] = gdf[col].astype(str)
+
+                    cols = ["Name", "Description"] + [col for col in gdf.columns if col not in ("Name", "Description", "geometry")] + ["geometry"]
+                    gdf = gdf[cols]
+
+                    gdf.to_file(temp_kml, driver="KML")
+
+                    with zipfile.ZipFile(temp_kmz, 'w', zipfile.ZIP_DEFLATED) as kmz:
+                        kmz.write(temp_kml, arcname="doc.kml")
+
+                    with open(temp_kmz, "rb") as f:
+                        kmz_bytes = f.read()
+
+                    st.session_state["kmz_result"] = kmz_bytes
+
+            except Exception as e:
+                st.error(f"Erreur lors de la conversion : {e}")
+
+    if st.session_state.get("kmz_result"):
+        st.download_button(
+            label="Télécharger le fichier KMZ",
+            data=st.session_state["kmz_result"],
+            file_name="converted.kmz",
+            mime="application/vnd.google-earth.kmz"
+        )
+
+        if st.button("Renouveler l'opération"):
+            st.session_state["kmz_result"] = None
+            current_key = int(st.session_state["upload_key"].split("_")[-1])
+            st.session_state["upload_key"] = f"file_uploader_geojson_{current_key + 1}"
             st.rerun()
