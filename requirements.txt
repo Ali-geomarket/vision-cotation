@@ -5,3 +5,6 @@ requests
 geopandas
 matplotlib
 shapely
+pyproj
+fiona
+rtree
