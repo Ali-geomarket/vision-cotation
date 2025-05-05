@@ -50,11 +50,11 @@ if st.session_state["main_page"] == "home":
             st.session_state["ma_regroupe_result"] = None
             st.session_state["upload_key"] = "file_uploader_0"
             st.rerun()
-
     with col2:
         if st.button("Transformer GeoJSON en KMZ"):
             st.session_state["main_page"] = "geojson_to_kmz"
             st.session_state["kmz_result"] = None
+            st.session_state["kmz_filename"] = None
             st.session_state["upload_key"] = "file_uploader_geojson_0"
             st.rerun()
 
@@ -107,7 +107,6 @@ elif st.session_state["main_page"] == "ma_regroupe":
         st.subheader("Résultat – Marché Adressable regroupé")
         st.dataframe(st.session_state["ma_regroupe_result"])
 
-        # Génération image
         buf = BytesIO()
         fig, ax = plt.subplots(figsize=(10, 3))
         ax.axis('off')
@@ -131,7 +130,7 @@ elif st.session_state["main_page"] == "ma_regroupe":
             st.session_state["upload_key"] = f"file_uploader_{current_key + 1}"
             st.rerun()
 
-# --- PAGE : Transformation GeoJSON ➜ KMZ ---
+# --- PAGE : GEOJSON ➜ KMZ ---
 elif st.session_state["main_page"] == "geojson_to_kmz":
     st.title("Transformation GeoJSON ➜ KMZ")
 
@@ -144,12 +143,14 @@ elif st.session_state["main_page"] == "geojson_to_kmz":
     if uploaded_file:
         st.success("Fichier chargé. Cliquez ci-dessous pour lancer la conversion.")
 
+        filename_stem = Path(uploaded_file.name).stem  # ex : "client_marches"
+
         if st.button("Transformer le fichier en KMZ"):
             try:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     temp_geojson = Path(tmpdir) / "input.geojson"
                     temp_kml = Path(tmpdir) / "output.kml"
-                    temp_kmz = Path(tmpdir) / "output.kmz"
+                    temp_kmz = Path(tmpdir) / f"{filename_stem}.kmz"
 
                     with open(temp_geojson, "wb") as f:
                         f.write(uploaded_file.read())
@@ -198,6 +199,7 @@ elif st.session_state["main_page"] == "geojson_to_kmz":
                         kmz_bytes = f.read()
 
                     st.session_state["kmz_result"] = kmz_bytes
+                    st.session_state["kmz_filename"] = f"{filename_stem}.kmz"
 
             except Exception as e:
                 st.error(f"Erreur lors de la conversion : {e}")
@@ -206,12 +208,13 @@ elif st.session_state["main_page"] == "geojson_to_kmz":
         st.download_button(
             label="Télécharger le fichier KMZ",
             data=st.session_state["kmz_result"],
-            file_name="converted.kmz",
+            file_name=st.session_state["kmz_filename"],
             mime="application/vnd.google-earth.kmz"
         )
 
         if st.button("Renouveler l'opération"):
             st.session_state["kmz_result"] = None
+            st.session_state["kmz_filename"] = None
             current_key = int(st.session_state["upload_key"].split("_")[-1])
             st.session_state["upload_key"] = f"file_uploader_geojson_{current_key + 1}"
             st.rerun()
