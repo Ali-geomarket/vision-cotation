@@ -8,6 +8,7 @@ from pathlib import Path
 import zipfile
 import tempfile
 import os
+import chardet
 
 # --- Configuration initiale ---
 st.set_page_config(page_title="Vision Cotation", layout="centered")
@@ -51,7 +52,7 @@ if st.session_state["main_page"] == "home":
             st.session_state["upload_key"] = "file_uploader_0"
             st.rerun()
     with col2:
-        if st.button("Transformer GeoJSON en KMZ"):
+        if st.button("Convertir GeoJSON en KMZ"):
             st.session_state["main_page"] = "geojson_to_kmz"
             st.session_state["kmz_result"] = None
             st.session_state["kmz_filename"] = None
@@ -66,11 +67,18 @@ elif st.session_state["main_page"] == "ma_regroupe":
         st.session_state["main_page"] = "home"
         st.rerun()
 
-    uploaded_file = st.file_uploader("Déposez un fichier CSV", type=["csv"], key=st.session_state["upload_key"])
+    uploaded_file = st.file_uploader("Déposez un fichier CSV ou Excel", type=["csv", "xlsx"], key=st.session_state["upload_key"])
 
     if uploaded_file:
         try:
-            df = pd.read_csv(uploaded_file, sep=';', dtype=str)
+            if uploaded_file.name.endswith(".xlsx"):
+                df = pd.read_excel(uploaded_file, dtype=str)
+            else:
+                raw_data = uploaded_file.read()
+                encoding = chardet.detect(raw_data)['encoding']
+                content = raw_data.decode(encoding)
+                sep = ';' if content.count(';') > content.count(',') else ','
+                df = pd.read_csv(BytesIO(raw_data), sep=sep, dtype=str)
 
             def regrouper_tranches(val):
                 if isinstance(val, str):
@@ -132,7 +140,7 @@ elif st.session_state["main_page"] == "ma_regroupe":
 
 # --- PAGE : GEOJSON ➜ KMZ ---
 elif st.session_state["main_page"] == "geojson_to_kmz":
-    st.title("Transformation GeoJSON ➜ KMZ")
+    st.title("Conversion GeoJSON ➜ KMZ")
 
     if st.button("Retour"):
         st.session_state["main_page"] = "home"
@@ -143,9 +151,9 @@ elif st.session_state["main_page"] == "geojson_to_kmz":
     if uploaded_file:
         st.success("Fichier chargé. Cliquez ci-dessous pour lancer la conversion.")
 
-        filename_stem = Path(uploaded_file.name).stem  # ex : "client_marches"
+        filename_stem = Path(uploaded_file.name).stem
 
-        if st.button("Transformer le fichier en KMZ"):
+        if st.button("Convertir le fichier en KMZ"):
             try:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     temp_geojson = Path(tmpdir) / "input.geojson"
